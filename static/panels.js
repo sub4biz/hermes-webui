@@ -170,6 +170,10 @@ function syncAppTitlebar() {
       titleEl._titlePopover = null;
       const _dismissTitlePopover = () => {
         if (titleEl._titlePopover) { titleEl._titlePopover.remove(); titleEl._titlePopover = null; }
+        if (titleEl._popoverOutsideHandler) {
+          document.removeEventListener('click', titleEl._popoverOutsideHandler, true);
+          titleEl._popoverOutsideHandler = null;
+        }
       };
       titleEl.addEventListener('click', function _onTitleClick(e) {
         if (_renamingAppTitlebar) return;
