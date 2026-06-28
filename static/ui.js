@@ -5890,6 +5890,33 @@ function getComposerPrimaryAction(){
   return 'queue';
 }
 
+function _applyBusyComposerPlaceholder(){
+  const input=$('msg');
+  if(!input) return;
+  if(_compressionPlaceholderSaved!==null) return;
+  if(input.disabled) return;
+  if(_composerHasContent()) return;
+  const idlePlaceholder='Message '+assistantDisplayName()+'\u2026';
+  if(!window._showBusyPlaceholderHint||!S.busy){
+    input.placeholder=idlePlaceholder;
+    return;
+  }
+  const busyMode=window._busyInputMode||'queue';
+  const busyPlaceholderKey=busyMode==='interrupt'
+    ? 'composer_placeholder_busy_interrupt'
+    : busyMode==='steer'
+      ? 'composer_placeholder_busy_steer'
+      : 'composer_placeholder_busy_queue';
+  const busyPlaceholderFallback=busyMode==='interrupt'
+    ? 'Enter = interrupt | /queue | /background | /steer'
+    : busyMode==='steer'
+      ? 'Enter = steer | /queue | /background | /interrupt'
+      : 'Enter = queue | /interrupt | /background | /steer';
+  input.placeholder=typeof t==='function'
+    ? (t(busyPlaceholderKey)||busyPlaceholderFallback)
+    : busyPlaceholderFallback;
+}
+
 function _setComposerPrimaryButtonIcon(btn,action){
   // Queue/interrupt/steer icons are inline Lucide SVGs (ISC):
   // https://lucide.dev/icons/
@@ -5907,7 +5934,10 @@ function _setComposerPrimaryButtonIcon(btn,action){
 
 function updateSendBtn(){
   const btn=$('btnSend');
-  if(!btn) return;
+  if(!btn){
+    if(typeof _applyBusyComposerPlaceholder==='function') _applyBusyComposerPlaceholder();
+    return;
+  }
   const action=getComposerPrimaryAction();
   btn.dataset.action=action;
   btn.classList.toggle('stop',action==='stop');
@@ -5929,6 +5959,7 @@ function updateSendBtn(){
   btn.title=_btnTitle;
   btn.setAttribute('aria-label',_btnTitle);
   _setComposerPrimaryButtonIcon(btn,action);
+  if(typeof _applyBusyComposerPlaceholder==='function') _applyBusyComposerPlaceholder();
   // Single primary action button: while busy/no-draft it becomes the red Stop
   // action; while busy with a draft it reflects queue/interrupt/steer.
   btn.style.display='';
@@ -5959,6 +5990,7 @@ async function handleComposerPrimaryAction(){
 function setBusy(v){
   S.busy=v;
   updateSendBtn();
+  if(typeof _applyBusyComposerPlaceholder==='function') _applyBusyComposerPlaceholder();
   if(!v){
     if(typeof _clearActivityElapsedTimer==='function') _clearActivityElapsedTimer();
     setStatus('');
