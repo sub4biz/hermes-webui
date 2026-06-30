@@ -10619,7 +10619,7 @@ const LOCALES = {
     settings_desc_notifications: '当标签页在后台时，回复完成后显示系统通知。',
     notifications_enable_btn: '启用通知',
     notifications_test_btn: '发送测试',
-    notifications_permission_status: (status) => `准许: ${status}`,
+    notifications_permission_status: (status) => `权限: ${status}`,
     notifications_enabled_toast: '通知已启用。',
     notifications_denied: '此浏览器中通知功能被阻止。请在浏览器设置中启用。',
     notifications_unsupported: '此浏览器不支持通知功能。',
