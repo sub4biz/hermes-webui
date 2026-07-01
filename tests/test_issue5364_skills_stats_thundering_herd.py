@@ -38,7 +38,17 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _make_profiles_module():
-    """Import api.profiles with minimal stubs for heavy dependencies."""
+    """Import api.profiles with minimal stubs for heavy dependencies.
+
+    Returns ``(mod, saved_modules, injected_names)`` so the caller can fully
+    restore ``sys.modules`` on teardown. This test intentionally manipulates
+    ``sys.modules`` (stubbing flask/yaml/agent and re-importing api.profiles
+    in isolation); if those mutations leak, later tests re-import api.config /
+    api.routes against the stub ``yaml`` (whose ``safe_load`` returns None) and
+    a half-populated ``api`` package, which silently breaks unrelated suites
+    (e.g. MCP/provider/config tests whose ``get_config`` patch no longer sees
+    real config). So we snapshot every key we touch and restore it exactly.
+    """
     stubs = {
         "flask": types.ModuleType("flask"),
         "yaml": types.ModuleType("yaml"),
@@ -61,6 +71,13 @@ def _make_profiles_module():
     su.parse_frontmatter = MagicMock(return_value=({}, ""))
     su.skill_matches_platform = MagicMock(return_value=True)
 
+    # Snapshot every sys.modules key we are about to mutate so teardown can
+    # restore the real modules (not just delete them). Keys absent now are
+    # recorded as sentinel so teardown removes any stub we introduced.
+    _ABSENT = object()
+    touched = set(stubs) | {"api", "api.profiles"}
+    saved_modules = {k: sys.modules.get(k, _ABSENT) for k in touched}
+
     for name, mod in stubs.items():
         sys.modules.setdefault(name, mod)
 
@@ -80,16 +97,24 @@ def _make_profiles_module():
         spec.loader.exec_module(mod)
     except Exception:
         pass
-    return mod
+    return mod, saved_modules, _ABSENT
 
 
 @pytest.fixture()
 def mod(tmp_path):
+    saved_modules = {}
+    _ABSENT = object()
     try:
-        m = _make_profiles_module()
+        m, saved_modules, _ABSENT = _make_profiles_module()
         assert hasattr(m, "_get_profile_skills_stats")
         assert hasattr(m, "_skills_stats_lock_for")
     except Exception:
+        # Restore anything we already mutated before skipping.
+        for k, v in saved_modules.items():
+            if v is _ABSENT:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
         pytest.skip("api.profiles not importable in this environment")
     # Reset both caches + the per-profile lock registry for isolation.
     if hasattr(m, "_SKILLS_STATS_CACHE"):
@@ -98,11 +123,17 @@ def mod(tmp_path):
         m._SKILLS_STATS_LOCKS.clear()
     if hasattr(m, "_LIST_PROFILES_CACHE"):
         m._LIST_PROFILES_CACHE = None
-    yield m
-    saved = {k: v for k, v in list(sys.modules.items())
-             if k == "api" or k.startswith("api.")}
-    for k in list(saved):
-        sys.modules.pop(k, None)
+    try:
+        yield m
+    finally:
+        # Fully restore sys.modules: put back the real modules we evicted and
+        # drop any stub we introduced, so the manipulation cannot leak into
+        # subsequent tests (they re-import the real api.config/api.routes).
+        for k, v in saved_modules.items():
+            if v is _ABSENT:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
 
 
 # ---------------------------------------------------------------------------
